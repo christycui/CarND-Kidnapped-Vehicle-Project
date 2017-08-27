@@ -24,7 +24,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
-  num_particles = 1000;
+  num_particles = 50;
   particles.resize(num_particles);
   weights.resize(num_particles);
 
@@ -49,8 +49,6 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     particles[i].weight = 1;
   }
   is_initialized = true;
-  cout << "Finish initializing" << endl;
-  cout << "particle: " << particles[0].x << " " << particles[0].y << " " << particles[0].weight << endl;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -65,23 +63,29 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 
   default_random_engine gen;
 
+  // create a normal (Gaussian) distribution
+  normal_distribution<double> dist_x(0, std_x);
+  normal_distribution<double> dist_y(0, std_y);
+  normal_distribution<double> dist_theta(0, std_theta);
+  double x, y, new_theta;
+
   for (int i = 0; i < num_particles; i++) {
     Particle particle_i = particles[i];
     double theta = particle_i.theta;
-    double x = particle_i.x + velocity/yaw_rate*(sin(theta+yaw_rate*delta_t) - sin(theta));
-    double y = particle_i.y + velocity/yaw_rate*(cos(theta) - cos(theta+yaw_rate*delta_t));
-    double new_theta = theta + yaw_rate*delta_t;
-    
-    // create a normal (Gaussian) distribution
-    normal_distribution<double> dist_x(x, std_x);
-    normal_distribution<double> dist_y(y, std_y);
-    normal_distribution<double> dist_theta(new_theta, std_theta);
+    if (yaw_rate != 0) {
+      x = particle_i.x + velocity/yaw_rate*(sin(theta+yaw_rate*delta_t) - sin(theta)) + dist_x(gen);
+      y = particle_i.y + velocity/yaw_rate*(cos(theta) - cos(theta+yaw_rate*delta_t)) + dist_y(gen);
+      new_theta = theta + yaw_rate*delta_t + dist_theta(gen);
+    } else {
+      x = particle_i.x + velocity*cos(theta)*delta_t + dist_x(gen);
+      y = particle_i.y + velocity*sin(theta)*delta_t + dist_y(gen);
+      new_theta = theta + dist_theta(gen);
+    }
 
-    particles[i].x = dist_x(gen);
-    particles[i].y = dist_y(gen);
-    particles[i].theta = dist_theta(gen);
+    particles[i].x = x;
+    particles[i].y = y;
+    particles[i].theta = new_theta;
   }
-  cout << "Finish prediction" << endl;
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
@@ -163,8 +167,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
   // normalize weights
   weights = normalize_vector(weights);
-
-  cout << "updated weights" << endl;
 }
 
 void ParticleFilter::resample() {
@@ -178,14 +180,11 @@ void ParticleFilter::resample() {
 
   for (int i = 0; i < num_particles; i++) {
     Particle particle = particles[d(gen)];
+    particle.weight = 1;
     particles_new.push_back(particle);
-    weights[i] = particle.weight;
   }
 
-  // normalize weights
-  weights = normalize_vector(weights);
   particles = particles_new;
-  cout << "resampled" << endl;
 }
 
 Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)
